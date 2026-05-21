@@ -1,0 +1,42 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  /* Respect iPhone notch / Dynamic Island */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  background: #FDF6F0;
+  /* Prevent iOS rubber-band scroll on the body */
+  overscroll-behavior: none;
+}
+
+#root {
+  min-height: 100dvh; /* dynamic viewport height — handles iOS toolbar */
+}
+
+/* Smooth scrolling for the whole app */
+* {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent text size adjustment on orientation change */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Native-feeling inputs */
+input, button, select, textarea {
+  font-family: inherit;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+input[type="date"] {
+  -webkit-appearance: none;
+}
