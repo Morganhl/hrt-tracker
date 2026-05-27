@@ -178,22 +178,35 @@ function LoginScreen({onLogin}) {
 }
 
 // ─── Setup Wizard ─────────────────────────────────────────────────────────────
-function SetupWizard({onComplete}) {
+function SetupWizard({onComplete, existingData}) {
+  // Pre-fill from existing data if available (returning user / app rebuild)
+  const hasExisting = !!(existingData?.patchNum);
   const [step,setStep]=useState(1);
-  const [selectedPatch,setSelectedPatch]=useState(null);
-  const [appliedDate,setAppliedDate]=useState(fmtDate(new Date()));
-  const [tostranDate,setTostranDate]=useState(fmtDate(new Date()));
-  const [trackTostran,setTrackTostran]=useState(true);
-  const [trackPeriod,setTrackPeriod]=useState(true);
-  const [lastPeriod,setLastPeriod]=useState(fmtDate(new Date()));
-  const [cycleLength,setCycleLength]=useState("28");
+  const [selectedPatch,setSelectedPatch]=useState(existingData?.patchNum||null);
+  const [appliedDate,setAppliedDate]=useState(existingData?.patchAppliedDate||fmtDate(new Date()));
+  const [tostranDate,setTostranDate]=useState(existingData?.tostranStartDate||fmtDate(new Date()));
+  const [trackTostran,setTrackTostran]=useState(existingData?.tostranStartDate?true:true);
+  const [trackPeriod,setTrackPeriod]=useState(!!(existingData?.lastPeriodDate));
+  const [lastPeriod,setLastPeriod]=useState(existingData?.lastPeriodDate||fmtDate(new Date()));
+  const [cycleLength,setCycleLength]=useState(existingData?.cycleLength?String(existingData.cycleLength):"28");
 
   function finish() {
     onComplete({
       patchNum:selectedPatch, appliedDate:new Date(appliedDate+"T12:00:00"),
       tostranDate:trackTostran?new Date(tostranDate+"T12:00:00"):null,
       lastPeriodDate:trackPeriod?lastPeriod:null, cycleLength:trackPeriod?parseInt(cycleLength):null,
-      periodLogs:[]
+      periodLogs:existingData?.periodLogs||[]
+    });
+  }
+
+  function skipWithSaved() {
+    onComplete({
+      patchNum:existingData.patchNum,
+      appliedDate:new Date(existingData.patchAppliedDate+"T12:00:00"),
+      tostranDate:existingData.tostranStartDate?new Date(existingData.tostranStartDate+"T12:00:00"):null,
+      lastPeriodDate:existingData.lastPeriodDate||null,
+      cycleLength:existingData.cycleLength||28,
+      periodLogs:existingData.periodLogs||[]
     });
   }
 
@@ -211,6 +224,22 @@ function SetupWizard({onComplete}) {
 
         {/* Step 1 — patch picker */}
         {step===1&&<div>
+
+          {/* Skip banner for returning users */}
+          {hasExisting&&(()=>{const p=PATCHES[existingData.patchNum-1]; return(
+            <div style={{background:"#F0FFF4",border:"1px solid #A5C4A5",borderRadius:14,padding:"14px 16px",marginBottom:20}}>
+              <div style={{fontSize:12,fontWeight:600,color:"#5A8A6A",marginBottom:4}}>✓ Saved profile found</div>
+              <div style={{fontSize:12,color:"#5A7A6A",marginBottom:10,lineHeight:1.5}}>
+                Last saved: <strong>{p.emoji} Patch #{existingData.patchNum} — {p.patch}</strong><br/>
+                Applied: <strong>{new Date(existingData.patchAppliedDate+"T12:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"})}</strong>
+              </div>
+              <button onClick={skipWithSaved} style={{width:"100%",padding:"11px",borderRadius:10,border:"none",background:"#6BA57B",color:"white",fontSize:14,fontWeight:600,cursor:"pointer"}}>
+                ✓ Continue with saved settings
+              </button>
+              <div style={{textAlign:"center",marginTop:8,fontSize:12,color:"#8A9A8A"}}>or update below if your patch has changed</div>
+            </div>
+          );})()}
+
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:20,color:"#3D2B1F",fontWeight:700,marginBottom:6}}>Which patch are you on?</div>
           <div style={{fontSize:13,color:"#8A7265",marginBottom:20,lineHeight:1.5}}>Select the patch you're <strong>currently wearing</strong>.</div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:16}}>
@@ -457,6 +486,7 @@ export default function HRTTracker() {
   const [eCycleLen,setECycleLen]   = useState("28");
   const [eTrackPeriod,setETrackPeriod] = useState(false);
   const saveTimer = useRef(null);
+  const pendingCloudData = useRef(null); // stores cloud data for wizard pre-fill
 
   // On launch: if userId is cached in localStorage, silently re-fetch from Supabase
   // This means the user never sees setup wizard again after first login
@@ -470,6 +500,7 @@ export default function HRTTracker() {
           setUserId(cached);
           applyCloudData(cloudData);
           setSetupDone(true);
+          pendingCloudData.current = cloudData;
         } else {
           // Name cached but no data in Supabase (e.g. data was deleted) — show login
           localStorage.removeItem("hrt_userId");
@@ -505,6 +536,9 @@ export default function HRTTracker() {
     if(cloudData) {
       applyCloudData(cloudData);
       setSetupDone(true);
+    } else {
+      // New user — wizard shows. No existing data to pre-fill.
+      pendingCloudData.current = null;
     }
     // If no cloudData, setupDone stays false → wizard shows
   }
@@ -600,7 +634,7 @@ export default function HRTTracker() {
   if(!userId) return <LoginScreen onLogin={handleLogin}/>;
 
   // Logged in but no Supabase data yet — first time setup
-  if(!setupDone) return <SetupWizard onComplete={handleSetupComplete}/>;
+  if(!setupDone) return <SetupWizard onComplete={handleSetupComplete} existingData={pendingCloudData.current}/>;
 
   const cycleStart   = calcCycleStart(patchNum,patchApplied);
   const patchEvents  = generatePatchSchedule(cycleStart,6);
@@ -638,6 +672,9 @@ export default function HRTTracker() {
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:16,color:"#3D2B1F",fontWeight:600,marginBottom:16}}>Settings</div>
 
           <label style={lbl}>Current patch</label>
+          <div style={{fontSize:12,color:"#A08070",marginBottom:10,lineHeight:1.5}}>
+            Update this if your patch has changed since you last opened the app. This recalculates your full schedule.
+          </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginBottom:12}}>
             {PATCHES.map(p=>{const s=ePatch===p.num;return<button key={p.num} onClick={()=>setEPatch(p.num)} style={{border:`2px solid ${s?p.color:"#E0D5CC"}`,borderRadius:12,padding:"10px 3px 8px",cursor:"pointer",background:s?p.color+"20":"#FDFAF7",transition:"all 0.2s",display:"flex",flexDirection:"column",alignItems:"center",gap:3,boxShadow:s?`0 3px 10px ${p.color}44`:"none"}}><span style={{fontSize:18}}>{p.emoji}</span><span style={{fontSize:13,fontWeight:700,color:s?(p.num<=4?"#B07070":"#5A8A6A"):"#3D2B1F"}}>#{p.num}</span><span style={{fontSize:9,color:"#A08070",textAlign:"center"}}>{p.num<=4?"Evorel 50":"Conti"}</span></button>;})}
           </div>
