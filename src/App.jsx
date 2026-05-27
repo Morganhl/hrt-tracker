@@ -523,29 +523,9 @@ export default function HRTTracker() {
   const saveTimer = useRef(null);
   const pendingCloudData = useRef(null); // stores cloud data for wizard pre-fill
 
-  // On launch: if name cached AND data exists in Supabase, skip login entirely
-  useEffect(()=>{
-    async function tryAutoLogin() {
-      const cached = localStorage.getItem("hrt_userId");
-      if(!cached) { setAppLoading(false); return; }
-      try {
-        const cloudData = await sbGet(cached);
-        if(cloudData) {
-          // Data found — load straight into app, skip login AND wizard
-          pendingCloudData.current = cloudData;
-          setUserId(cached);
-          applyCloudData(cloudData);
-          setSetupDone(true);
-        }
-        // No data found — stay on login screen (userId stays null)
-      } catch(e) {
-        // Network error — show login screen so user can retry
-        console.warn("Auto-login failed:", e);
-      }
-      setAppLoading(false);
-    }
-    tryAutoLogin();
-  },[]);
+  // On launch: ALWAYS show login screen first.
+  // The login screen pre-fills the cached name so it's one tap for returning users.
+  useEffect(()=>{ setAppLoading(false); },[]);
 
   useEffect(()=>{
     if("serviceWorker" in navigator&&"PushManager" in window)
@@ -562,16 +542,16 @@ export default function HRTTracker() {
     setCompleted(cloudData.completedDoses||{});
   }
 
-  async function handleLogin(uid,cloudData) {
-    localStorage.setItem("hrt_userId",uid);
+  async function handleLogin(uid, cloudData) {
+    localStorage.setItem("hrt_userId", uid);
     setUserId(uid);
-    // Always store cloud data for wizard pre-fill
     pendingCloudData.current = cloudData || null;
-    if(cloudData) {
+    if(cloudData && cloudData.patchNum) {
+      // Valid existing profile — load it and skip wizard entirely
       applyCloudData(cloudData);
       setSetupDone(true);
     }
-    // If no cloudData, setupDone stays false → wizard shows (with no pre-fill)
+    // Otherwise setupDone stays false → wizard shows for new users only
   }
 
   function payload(pn,pa,ts,lp,cl,pl,cd) {
