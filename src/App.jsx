@@ -142,71 +142,117 @@ function generateICS(patchEvents,tostranEvents,periodEvents) {
 
 // ─── Login ────────────────────────────────────────────────────────────────────
 function LoginScreen({onLogin}) {
-  // Pre-fill name from cache so returning users just tap Continue
   const cached = localStorage.getItem("hrt_userId")||"";
-  const [name,setName]=useState(cached);
-  const [loading,setLoading]=useState(false);
-  const [error,setError]=useState("");
-  const isReturning = !!cached;
+  // switchName is only used when typing a different name
+  const [switchName,setSwitchName] = useState("");
+  const [loading,setLoading]       = useState(false);
+  const [loadingSwitch,setLoadingSwitch] = useState(false);
+  const [error,setError]           = useState("");
+  const isReturning                = !!cached;
+  const displayName                = cached.charAt(0).toUpperCase()+cached.slice(1);
 
-  async function handleLogin() {
-    const uid=name.trim().toLowerCase();
-    if(!uid){setError("Please enter your name");return;}
+  // Continue as cached user
+  async function handleContinue() {
+    setLoading(true); setError("");
+    try {
+      const data = await sbGet(cached);
+      onLogin(cached, data);
+    } catch { setError("Couldn't connect — check your internet"); }
+    setLoading(false);
+  }
+
+  // Sign in as a different (possibly new) person
+  async function handleSwitch() {
+    const uid = switchName.trim().toLowerCase();
+    if(!uid){ setError("Please enter a name"); return; }
+    setLoadingSwitch(true); setError("");
+    try {
+      const data = await sbGet(uid);
+      // data will be null for brand new users — handleLogin in main app handles that
+      onLogin(uid, data);
+    } catch { setError("Couldn't connect — check your internet"); }
+    setLoadingSwitch(false);
+  }
+
+  // New user (no cached name)
+  async function handleNew() {
+    const uid = switchName.trim().toLowerCase();
+    if(!uid){ setError("Please enter your name"); return; }
     setLoading(true); setError("");
     try {
       const data = await sbGet(uid);
-      onLogin(uid,data);
-    } catch { setError("Couldn't connect — check your internet and try again"); }
+      onLogin(uid, data);
+    } catch { setError("Couldn't connect — check your internet"); }
     setLoading(false);
   }
 
   return (
     <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#FDF6F0,#F5EDE8,#EDE8F5)",fontFamily:"'DM Sans',sans-serif",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"32px 24px"}}>
       <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
-      <div style={{fontSize:52,marginBottom:16}}>🌸</div>
-      <div style={{fontFamily:"'Playfair Display',serif",fontSize:28,color:"#3D2B1F",fontWeight:700,marginBottom:8}}>HRT Tracker</div>
+      <div style={{fontSize:52,marginBottom:12}}>🌸</div>
+      <div style={{fontFamily:"'Playfair Display',serif",fontSize:28,color:"#3D2B1F",fontWeight:700,marginBottom:24}}>HRT Tracker</div>
 
       <div style={{width:"100%",maxWidth:340}}>
-
-        {/* Returning user — show name pre-filled with welcome back */}
         {isReturning ? (
           <div>
-            <div style={{background:"#F0FFF4",border:"1px solid #A5C4A5",borderRadius:16,padding:"18px 20px",marginBottom:20,textAlign:"center"}}>
-              <div style={{fontSize:24,marginBottom:8}}>👋</div>
-              <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,color:"#3D2B1F",fontWeight:600,marginBottom:4}}>
-                Welcome back, {cached.charAt(0).toUpperCase()+cached.slice(1)}!
+            {/* Welcome back banner */}
+            <div style={{background:"#F0FFF4",border:"1px solid #A5C4A5",borderRadius:16,padding:"20px",marginBottom:24,textAlign:"center"}}>
+              <div style={{fontSize:28,marginBottom:8}}>👋</div>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:19,color:"#3D2B1F",fontWeight:600,marginBottom:6}}>
+                Welcome back, {displayName}!
               </div>
-              <div style={{fontSize:13,color:"#6A8A6A",marginBottom:14}}>
-                Tap below to load your saved profile
+              <div style={{fontSize:13,color:"#6A8A6A",marginBottom:16,lineHeight:1.5}}>
+                Your saved profile will load automatically.
               </div>
-              <button onClick={handleLogin} disabled={loading} style={{width:"100%",padding:"14px",borderRadius:12,border:"none",background:loading?"#B0C8B0":"#6BA57B",color:"white",fontSize:15,fontWeight:600,cursor:loading?"default":"pointer"}}>
-                {loading?"Loading your profile…":"Continue as "+cached.charAt(0).toUpperCase()+cached.slice(1)+" →"}
+              <button onClick={handleContinue} disabled={loading} style={{width:"100%",padding:"14px",borderRadius:12,border:"none",background:loading?"#B0C8B0":"#6BA57B",color:"white",fontSize:15,fontWeight:600,cursor:loading?"default":"pointer"}}>
+                {loading ? "Loading your profile…" : `Continue as ${displayName} →`}
               </button>
             </div>
-            <div style={{textAlign:"center",fontSize:12,color:"#A08070",marginBottom:8}}>Not you?</div>
-            <input value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLogin()}
-              placeholder="Enter a different name" style={{...inp,fontSize:15,padding:"11px 14px",marginBottom:8}}/>
-            <button onClick={handleLogin} disabled={loading||!name.trim()||name.trim().toLowerCase()===cached}
-              style={{width:"100%",padding:"11px",borderRadius:12,border:"1px solid #E0D5CC",background:"white",color:"#7A6558",fontSize:13,fontWeight:500,cursor:"pointer"}}>
-              Sign in as different person
-            </button>
+
+            {/* Different user section */}
+            <div style={{background:"white",borderRadius:14,padding:"16px",border:"1px solid #EDE5DC"}}>
+              <div style={{fontSize:13,fontWeight:600,color:"#7A6558",marginBottom:10}}>Different person?</div>
+              <div style={{fontSize:12,color:"#A08070",marginBottom:10,lineHeight:1.5}}>
+                Enter another name — existing profiles load automatically, new names start setup.
+              </div>
+              <input
+                value={switchName}
+                onChange={e=>setSwitchName(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&handleSwitch()}
+                placeholder="Enter name…"
+                style={{...inp,fontSize:15,padding:"11px 14px",marginBottom:10}}
+              />
+              <button
+                onClick={handleSwitch}
+                disabled={loadingSwitch||!switchName.trim()}
+                style={{width:"100%",padding:"11px",borderRadius:10,border:"none",background:loadingSwitch||!switchName.trim()?"#E0D5CC":"#C4856A",color:"white",fontSize:13,fontWeight:600,cursor:loadingSwitch||!switchName.trim()?"default":"pointer"}}
+              >
+                {loadingSwitch ? "Loading…" : "Continue →"}
+              </button>
+            </div>
           </div>
         ) : (
           <div>
             <div style={{fontSize:14,color:"#A08070",marginBottom:24,textAlign:"center",lineHeight:1.6}}>
-              Enter your name to load your profile or set up a new one.
+              Enter your name to load your saved profile or create a new one.
               Your partner uses their own name for a separate profile.
             </div>
             <label style={lbl}>Your first name</label>
-            <input value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLogin()}
-              placeholder="e.g. Morgan" style={{...inp,fontSize:16,padding:"13px 16px",marginBottom:16}} autoFocus/>
-            <button onClick={handleLogin} disabled={loading} style={{width:"100%",padding:"14px",borderRadius:14,border:"none",background:loading?"#E0D5CC":"#C4856A",color:"white",fontSize:15,fontWeight:600,cursor:loading?"default":"pointer"}}>
-              {loading?"Loading…":"Continue →"}
+            <input
+              value={switchName}
+              onChange={e=>setSwitchName(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&handleNew()}
+              placeholder="e.g. Morgan"
+              style={{...inp,fontSize:16,padding:"13px 16px",marginBottom:16}}
+              autoFocus
+            />
+            <button onClick={handleNew} disabled={loading} style={{width:"100%",padding:"14px",borderRadius:14,border:"none",background:loading?"#E0D5CC":"#C4856A",color:"white",fontSize:15,fontWeight:600,cursor:loading?"default":"pointer"}}>
+              {loading ? "Loading…" : "Continue →"}
             </button>
           </div>
         )}
 
-        {error&&<div style={{fontSize:13,color:"#C4856A",marginTop:12}}>⚠ {error}</div>}
+        {error && <div style={{fontSize:13,color:"#C4856A",marginTop:12}}>⚠ {error}</div>}
       </div>
     </div>
   );
