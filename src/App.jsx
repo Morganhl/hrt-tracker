@@ -434,6 +434,7 @@ function LogPeriodCard({onLog}) {
 export default function HRTTracker() {
   const [userId,setUserId]         = useState(()=>localStorage.getItem("hrt_userId")||null);
   const [setupDone,setSetupDone]   = useState(false);
+  const [appLoading,setAppLoading] = useState(true); // true while checking Supabase on launch
   const [syncing,setSyncing]       = useState(false);
   const [syncStatus,setSyncStatus] = useState(null);
   const [pushEnabled,setPushEnabled] = useState(false);
@@ -457,24 +458,55 @@ export default function HRTTracker() {
   const [eTrackPeriod,setETrackPeriod] = useState(false);
   const saveTimer = useRef(null);
 
+  // On launch: if userId is cached in localStorage, silently re-fetch from Supabase
+  // This means the user never sees setup wizard again after first login
+  useEffect(()=>{
+    async function autoLogin() {
+      const cached = localStorage.getItem("hrt_userId");
+      if(!cached) { setAppLoading(false); return; }
+      try {
+        const cloudData = await sbGet(cached);
+        if(cloudData) {
+          setUserId(cached);
+          applyCloudData(cloudData);
+          setSetupDone(true);
+        } else {
+          // Name cached but no data in Supabase (e.g. data was deleted) — show login
+          localStorage.removeItem("hrt_userId");
+          setUserId(null);
+        }
+      } catch {
+        // Network error — still set userId so they see the app, data may be stale
+        setUserId(cached);
+      }
+      setAppLoading(false);
+    }
+    autoLogin();
+  },[]);
+
   useEffect(()=>{
     if("serviceWorker" in navigator&&"PushManager" in window)
       navigator.serviceWorker.ready.then(r=>r.pushManager.getSubscription().then(s=>setPushEnabled(!!s)));
   },[]);
 
+  function applyCloudData(cloudData) {
+    setPatchNum(cloudData.patchNum||1);
+    setPatchApplied(new Date((cloudData.patchAppliedDate||fmtDate(new Date()))+"T12:00:00"));
+    setTostranStart(cloudData.tostranStartDate?new Date(cloudData.tostranStartDate+"T12:00:00"):null);
+    setLastPeriodDate(cloudData.lastPeriodDate||null);
+    setCycleLength(cloudData.cycleLength||28);
+    setPeriodLogs(cloudData.periodLogs||[]);
+    setCompleted(cloudData.completedDoses||{});
+  }
+
   async function handleLogin(uid,cloudData) {
     localStorage.setItem("hrt_userId",uid);
     setUserId(uid);
     if(cloudData) {
-      setPatchNum(cloudData.patchNum||1);
-      setPatchApplied(new Date(cloudData.patchAppliedDate||new Date()));
-      setTostranStart(cloudData.tostranStartDate?new Date(cloudData.tostranStartDate):null);
-      setLastPeriodDate(cloudData.lastPeriodDate||null);
-      setCycleLength(cloudData.cycleLength||28);
-      setPeriodLogs(cloudData.periodLogs||[]);
-      setCompleted(cloudData.completedDoses||{});
+      applyCloudData(cloudData);
       setSetupDone(true);
     }
+    // If no cloudData, setupDone stays false → wizard shows
   }
 
   function payload(pn,pa,ts,lp,cl,pl,cd) {
@@ -538,7 +570,7 @@ export default function HRTTracker() {
     setPushEnabled(ok);
   }
 
-  function logout(){localStorage.removeItem("hrt_userId");setUserId(null);setSetupDone(false);}
+  function logout(){localStorage.removeItem("hrt_userId");setUserId(null);setSetupDone(false);setAppLoading(false);}
 
   function gcUrl(ev) {
     const d=ev.date,dt=`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
@@ -554,7 +586,20 @@ export default function HRTTracker() {
     URL.revokeObjectURL(url);
   }
 
+  // Loading splash while auto-login checks Supabase
+  if(appLoading) return (
+    <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#FDF6F0,#F5EDE8,#EDE8F5)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans',sans-serif"}}>
+      <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+      <div style={{fontSize:52,marginBottom:16}}>🌸</div>
+      <div style={{fontFamily:"'Playfair Display',serif",fontSize:22,color:"#3D2B1F",fontWeight:700,marginBottom:8}}>HRT Tracker</div>
+      <div style={{fontSize:13,color:"#A08070"}}>Loading your profile…</div>
+    </div>
+  );
+
+  // Not logged in — show login screen
   if(!userId) return <LoginScreen onLogin={handleLogin}/>;
+
+  // Logged in but no Supabase data yet — first time setup
   if(!setupDone) return <SetupWizard onComplete={handleSetupComplete}/>;
 
   const cycleStart   = calcCycleStart(patchNum,patchApplied);
