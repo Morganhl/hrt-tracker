@@ -142,36 +142,71 @@ function generateICS(patchEvents,tostranEvents,periodEvents) {
 
 // ─── Login ────────────────────────────────────────────────────────────────────
 function LoginScreen({onLogin}) {
-  const [name,setName]=useState(""), [loading,setLoading]=useState(false), [error,setError]=useState(""), [found,setFound]=useState(null);
+  // Pre-fill name from cache so returning users just tap Continue
+  const cached = localStorage.getItem("hrt_userId")||"";
+  const [name,setName]=useState(cached);
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState("");
+  const isReturning = !!cached;
+
   async function handleLogin() {
     const uid=name.trim().toLowerCase();
     if(!uid){setError("Please enter your name");return;}
     setLoading(true); setError("");
     try {
       const data = await sbGet(uid);
-      setFound(!!data);
       onLogin(uid,data);
-    } catch { setError("Couldn't connect — check your internet"); }
+    } catch { setError("Couldn't connect — check your internet and try again"); }
     setLoading(false);
   }
+
   return (
     <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#FDF6F0,#F5EDE8,#EDE8F5)",fontFamily:"'DM Sans',sans-serif",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"32px 24px"}}>
       <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
       <div style={{fontSize:52,marginBottom:16}}>🌸</div>
       <div style={{fontFamily:"'Playfair Display',serif",fontSize:28,color:"#3D2B1F",fontWeight:700,marginBottom:8}}>HRT Tracker</div>
-      <div style={{fontSize:14,color:"#A08070",marginBottom:40,textAlign:"center"}}>Enter your name to load your profile or create a new one</div>
+
       <div style={{width:"100%",maxWidth:340}}>
-        <label style={lbl}>Your first name</label>
-        <input value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLogin()}
-          placeholder="e.g. Morgan" style={{...inp,fontSize:16,padding:"13px 16px",marginBottom:8}} autoFocus/>
-        <div style={{fontSize:12,color:"#A08070",marginBottom:20,lineHeight:1.6}}>
-          If you've used this app before, entering your name loads your existing data automatically.
-          Your partner uses their own name — each person has a completely separate profile.
-        </div>
-        {error&&<div style={{fontSize:13,color:"#C4856A",marginBottom:12}}>⚠ {error}</div>}
-        <button onClick={handleLogin} disabled={loading} style={{width:"100%",padding:"14px",borderRadius:14,border:"none",background:loading?"#E0D5CC":"#C4856A",color:"white",fontSize:15,fontWeight:600,cursor:loading?"default":"pointer"}}>
-          {loading?"Loading…":"Continue →"}
-        </button>
+
+        {/* Returning user — show name pre-filled with welcome back */}
+        {isReturning ? (
+          <div>
+            <div style={{background:"#F0FFF4",border:"1px solid #A5C4A5",borderRadius:16,padding:"18px 20px",marginBottom:20,textAlign:"center"}}>
+              <div style={{fontSize:24,marginBottom:8}}>👋</div>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,color:"#3D2B1F",fontWeight:600,marginBottom:4}}>
+                Welcome back, {cached.charAt(0).toUpperCase()+cached.slice(1)}!
+              </div>
+              <div style={{fontSize:13,color:"#6A8A6A",marginBottom:14}}>
+                Tap below to load your saved profile
+              </div>
+              <button onClick={handleLogin} disabled={loading} style={{width:"100%",padding:"14px",borderRadius:12,border:"none",background:loading?"#B0C8B0":"#6BA57B",color:"white",fontSize:15,fontWeight:600,cursor:loading?"default":"pointer"}}>
+                {loading?"Loading your profile…":"Continue as "+cached.charAt(0).toUpperCase()+cached.slice(1)+" →"}
+              </button>
+            </div>
+            <div style={{textAlign:"center",fontSize:12,color:"#A08070",marginBottom:8}}>Not you?</div>
+            <input value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLogin()}
+              placeholder="Enter a different name" style={{...inp,fontSize:15,padding:"11px 14px",marginBottom:8}}/>
+            <button onClick={handleLogin} disabled={loading||!name.trim()||name.trim().toLowerCase()===cached}
+              style={{width:"100%",padding:"11px",borderRadius:12,border:"1px solid #E0D5CC",background:"white",color:"#7A6558",fontSize:13,fontWeight:500,cursor:"pointer"}}>
+              Sign in as different person
+            </button>
+          </div>
+        ) : (
+          <div>
+            <div style={{fontSize:14,color:"#A08070",marginBottom:24,textAlign:"center",lineHeight:1.6}}>
+              Enter your name to load your profile or set up a new one.
+              Your partner uses their own name for a separate profile.
+            </div>
+            <label style={lbl}>Your first name</label>
+            <input value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLogin()}
+              placeholder="e.g. Morgan" style={{...inp,fontSize:16,padding:"13px 16px",marginBottom:16}} autoFocus/>
+            <button onClick={handleLogin} disabled={loading} style={{width:"100%",padding:"14px",borderRadius:14,border:"none",background:loading?"#E0D5CC":"#C4856A",color:"white",fontSize:15,fontWeight:600,cursor:loading?"default":"pointer"}}>
+              {loading?"Loading…":"Continue →"}
+            </button>
+          </div>
+        )}
+
+        {error&&<div style={{fontSize:13,color:"#C4856A",marginTop:12}}>⚠ {error}</div>}
       </div>
     </div>
   );
@@ -488,32 +523,9 @@ export default function HRTTracker() {
   const saveTimer = useRef(null);
   const pendingCloudData = useRef(null); // stores cloud data for wizard pre-fill
 
-  // On launch: if userId is cached in localStorage, silently re-fetch from Supabase
-  // This means the user never sees setup wizard again after first login
-  useEffect(()=>{
-    async function autoLogin() {
-      const cached = localStorage.getItem("hrt_userId");
-      if(!cached) { setAppLoading(false); return; }
-      try {
-        const cloudData = await sbGet(cached);
-        if(cloudData) {
-          setUserId(cached);
-          applyCloudData(cloudData);
-          setSetupDone(true);
-          pendingCloudData.current = cloudData;
-        } else {
-          // Name cached but no data in Supabase (e.g. data was deleted) — show login
-          localStorage.removeItem("hrt_userId");
-          setUserId(null);
-        }
-      } catch {
-        // Network error — still set userId so they see the app, data may be stale
-        setUserId(cached);
-      }
-      setAppLoading(false);
-    }
-    autoLogin();
-  },[]);
+  // On launch: always show login screen (never auto-skip)
+  // BUT pre-populate the name field if cached so it's one tap
+  useEffect(()=>{ setAppLoading(false); },[]);
 
   useEffect(()=>{
     if("serviceWorker" in navigator&&"PushManager" in window)
@@ -533,14 +545,13 @@ export default function HRTTracker() {
   async function handleLogin(uid,cloudData) {
     localStorage.setItem("hrt_userId",uid);
     setUserId(uid);
+    // Always store cloud data for wizard pre-fill
+    pendingCloudData.current = cloudData || null;
     if(cloudData) {
       applyCloudData(cloudData);
       setSetupDone(true);
-    } else {
-      // New user — wizard shows. No existing data to pre-fill.
-      pendingCloudData.current = null;
     }
-    // If no cloudData, setupDone stays false → wizard shows
+    // If no cloudData, setupDone stays false → wizard shows (with no pre-fill)
   }
 
   function payload(pn,pa,ts,lp,cl,pl,cd) {
