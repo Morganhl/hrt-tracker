@@ -496,7 +496,7 @@ function LogPeriodCard({onLog}) {
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function HRTTracker() {
-  const [userId,setUserId]         = useState(()=>localStorage.getItem("hrt_userId")||null);
+  const [userId,setUserId]         = useState(null); // always start null — login screen handles cached name
   const [setupDone,setSetupDone]   = useState(false);
   const [appLoading,setAppLoading] = useState(true); // true while checking Supabase on launch
   const [syncing,setSyncing]       = useState(false);
@@ -523,9 +523,29 @@ export default function HRTTracker() {
   const saveTimer = useRef(null);
   const pendingCloudData = useRef(null); // stores cloud data for wizard pre-fill
 
-  // On launch: always show login screen (never auto-skip)
-  // BUT pre-populate the name field if cached so it's one tap
-  useEffect(()=>{ setAppLoading(false); },[]);
+  // On launch: if name cached AND data exists in Supabase, skip login entirely
+  useEffect(()=>{
+    async function tryAutoLogin() {
+      const cached = localStorage.getItem("hrt_userId");
+      if(!cached) { setAppLoading(false); return; }
+      try {
+        const cloudData = await sbGet(cached);
+        if(cloudData) {
+          // Data found — load straight into app, skip login AND wizard
+          pendingCloudData.current = cloudData;
+          setUserId(cached);
+          applyCloudData(cloudData);
+          setSetupDone(true);
+        }
+        // No data found — stay on login screen (userId stays null)
+      } catch(e) {
+        // Network error — show login screen so user can retry
+        console.warn("Auto-login failed:", e);
+      }
+      setAppLoading(false);
+    }
+    tryAutoLogin();
+  },[]);
 
   useEffect(()=>{
     if("serviceWorker" in navigator&&"PushManager" in window)
