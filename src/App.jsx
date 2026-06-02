@@ -642,16 +642,34 @@ export default function HRTTracker() {
   }
 
   async function saveSettings() {
-    const pa=new Date(eApplied+"T12:00:00");
-    const ts=eTrackTos?new Date(eTostran+"T12:00:00"):null;
-    const lp=eTrackPeriod?eLastPeriod:null;
-    const cl=eTrackPeriod?parseInt(eCycleLen):cycleLength;
-    setPatchNum(ePatch);setPatchApplied(pa);setTostranStart(ts);
-    if(eTrackPeriod){setLastPeriodDate(lp);setCycleLength(cl);}
-    setShowSettings(false);setSyncing(true);
-    try{await sbUpsert(userId,payload(ePatch,pa,ts,lp,cl,periodLogs,completed));setSyncStatus("saved");setTimeout(()=>setSyncStatus(null),2000);}
-    catch{setSyncStatus("error");}
+    // Build all values locally first - don't rely on state which may not have updated yet
+    const pn = ePatch;
+    const pa = new Date(eApplied+"T12:00:00");
+    const ts = eTrackTos ? new Date(eTostran+"T12:00:00") : null;
+    const lp = eTrackPeriod ? eLastPeriod : lastPeriodDate;
+    const cl = eTrackPeriod ? parseInt(eCycleLen)||28 : cycleLength;
+    const pl = periodLogs;
+    const cd = completed;
+    const uid = userId;
+
+    // Update all state
+    setPatchNum(pn);
+    setPatchApplied(pa);
+    setTostranStart(ts);
+    if(eTrackPeriod){ setLastPeriodDate(lp); setCycleLength(cl); }
+
+    // Save to Supabase THEN close panel
+    setSyncing(true);
+    try {
+      await sbUpsert(uid, payload(pn, pa, ts, lp, cl, pl, cd));
+      setSyncStatus("saved");
+      setTimeout(()=>setSyncStatus(null), 2000);
+    } catch(e) {
+      console.error("Save failed:", e);
+      setSyncStatus("error");
+    }
     setSyncing(false);
+    setShowSettings(false);
   }
 
   async function handleEnablePush() {
