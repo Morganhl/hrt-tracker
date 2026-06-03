@@ -587,6 +587,7 @@ export default function HRTTracker() {
   const [syncStatus,setSyncStatus] = useState(null);
   const [pushEnabled,setPushEnabled] = useState(false);
   const [pushError,setPushError]     = useState("");
+  const [pushStep,setPushStep]       = useState("");
   const [patchNum,setPatchNum]     = useState(1);
   const [patchApplied,setPatchApplied] = useState(new Date());
   const [tostranStart,setTostranStart] = useState(null);
@@ -738,34 +739,71 @@ export default function HRTTracker() {
 
   async function handleEnablePush() {
     setPushError("");
-    // Check service worker support
+    setPushStep("Checking support…");
+
+    // Step 1: service worker
     if(!("serviceWorker" in navigator)) {
-      setPushError("Service worker not supported in this browser");
+      setPushStep(""); setPushError("❌ Service worker not supported. Open from home screen icon, not Safari.");
       return;
     }
+    setPushStep("✓ Service worker supported");
+
+    // Step 2: PushManager
     if(!("PushManager" in window)) {
-      setPushError("Push notifications not supported — make sure app is installed to home screen");
+      setPushStep(""); setPushError("❌ Push not supported. Make sure app is added to home screen.");
       return;
     }
-    // Request permission
+    setPushStep("✓ Push supported — requesting permission…");
+
+    // Step 3: Permission
     let permission;
     try {
       permission = await Notification.requestPermission();
     } catch(e) {
-      setPushError("Permission request failed: "+e.message);
+      setPushStep(""); setPushError("❌ Permission error: " + e.message);
       return;
     }
     if(permission !== "granted") {
-      setPushError("Permission denied — go to iPhone Settings → Notifications → find this app → allow notifications");
+      setPushStep(""); 
+      setPushError("❌ Permission " + permission + " — go to iPhone Settings → Notifications → find this app → Allow Notifications");
       return;
     }
-    // Subscribe
-    const ok = await subscribeToPush(userId);
-    if(ok) {
+    setPushStep("✓ Permission granted — registering device…");
+
+    // Step 4: Service worker ready
+    let reg;
+    try {
+      reg = await navigator.serviceWorker.ready;
+      setPushStep("✓ Service worker ready — subscribing…");
+    } catch(e) {
+      setPushStep(""); setPushError("❌ Service worker not ready: " + e.message);
+      return;
+    }
+
+    // Step 5: Subscribe
+    let sub;
+    try {
+      sub = await reg.pushManager.getSubscription();
+      if(!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlB64ToUint8(VAPID_PUBLIC_KEY)
+        });
+      }
+      setPushStep("✓ Subscribed — saving to server…");
+    } catch(e) {
+      setPushStep(""); setPushError("❌ Subscribe failed: " + e.message);
+      return;
+    }
+
+    // Step 6: Save to Supabase
+    try {
+      await sbSavePushSub(userId, sub.toJSON());
       setPushEnabled(true);
+      setPushStep("");
       setPushError("");
-    } else {
-      setPushError("Subscription failed — try closing and reopening the app from your home screen");
+    } catch(e) {
+      setPushStep(""); setPushError("❌ Couldn't save subscription: " + e.message);
     }
   }
 
@@ -893,7 +931,8 @@ export default function HRTTracker() {
                   Get notified every 2 hours on treatment days until you mark as done. Must be using the home screen icon, not Safari browser.
                 </div>
                 <button onClick={handleEnablePush} style={btn("#C4856A")}>Enable push notifications</button>
-                {pushError&&<div style={{fontSize:12,color:"#C4856A",marginTop:8,lineHeight:1.5}}>⚠ {pushError}</div>}
+                {pushStep&&<div style={{fontSize:12,color:"#7BA57B",marginTop:8,lineHeight:1.5}}>{pushStep}</div>}
+                {pushError&&<div style={{fontSize:12,color:"#C4856A",marginTop:8,lineHeight:1.5}}>{pushError}</div>}
               </div>
             ) : (
               <div>
