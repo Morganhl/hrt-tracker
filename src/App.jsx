@@ -967,8 +967,24 @@ export default function HRTTracker() {
               </div>
             ) : (
               <div>
-                <div style={{fontSize:12,color:"#7BA57B",marginBottom:6}}>✓ Active — notifies every 2 hours on treatment days until marked done</div>
-                <button onClick={async()=>{await unsubscribeFromPush();setPushEnabled(false);}} style={{...btn("#A09080"),background:"white",color:"#A09080",border:"1px solid #E0D5CC"}}>Disable notifications</button>
+                <div style={{fontSize:12,color:"#7BA57B",marginBottom:8}}>✓ Active — notifies every 2 hours on treatment days until marked done</div>
+                <button
+                  onClick={()=>{
+                    navigator.serviceWorker.ready.then(reg=>{
+                      reg.showNotification("🌸 HRT Tracker — Test", {
+                        body: "Push notifications are working! You'll be reminded on treatment days.",
+                        icon: "/icon-192.png",
+                        badge: "/icon-192.png",
+                        tag: "hrt-test"
+                      });
+                    }).catch(e=>alert("Test failed: "+e.message));
+                  }}
+                  style={btn("#7BA57B")}
+                >Send test notification</button>
+                <button
+                  onClick={async()=>{await unsubscribeFromPush();setPushEnabled(false);}}
+                  style={{...btn("#A09080"),background:"white",color:"#A09080",border:"1px solid #E0D5CC",marginTop:6}}
+                >Disable notifications</button>
               </div>
             )}
           </div>
