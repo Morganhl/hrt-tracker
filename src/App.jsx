@@ -11,10 +11,21 @@ async function sbGet(uid) {
   const rows = await r.json(); return rows?.[0]?.data || null;
 }
 async function sbUpsert(uid, data) {
-  await fetch(`${SUPABASE_URL}/rest/v1/hrt_data`, {
-    method:"POST", headers:{...SB, Prefer:"resolution=merge-duplicates"},
-    body: JSON.stringify({ user_id:uid, data, updated_at:new Date().toISOString() })
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/hrt_data`, {
+    method: "POST",
+    headers: {
+      ...SB,
+      Prefer: "resolution=merge-duplicates",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ user_id: uid, data, updated_at: new Date().toISOString() })
   });
+  if (!res.ok) {
+    const err = await res.text();
+    console.error("sbUpsert failed:", res.status, err);
+    throw new Error(`Save failed: ${res.status} ${err}`);
+  }
+  return res;
 }
 async function sbSavePushSub(uid, sub) {
   await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions`, {
@@ -548,6 +559,7 @@ export default function HRTTracker() {
   const [syncing,setSyncing]       = useState(false);
   const [syncStatus,setSyncStatus] = useState(null);
   const [pushEnabled,setPushEnabled] = useState(false);
+  const [pushError,setPushError]     = useState("");
   const [patchNum,setPatchNum]     = useState(1);
   const [patchApplied,setPatchApplied] = useState(new Date());
   const [tostranStart,setTostranStart] = useState(null);
@@ -569,9 +581,33 @@ export default function HRTTracker() {
   const saveTimer = useRef(null);
   const pendingCloudData = useRef(null); // stores cloud data for wizard pre-fill
 
-  // On launch: ALWAYS show login screen first.
-  // The login screen pre-fills the cached name so it's one tap for returning users.
-  useEffect(()=>{ setAppLoading(false); },[]);
+  // On launch: always fetch latest data from Supabase
+  // This ensures refresh never reverts to stale local state
+  useEffect(()=>{
+    async function loadLatest() {
+      const cached = localStorage.getItem("hrt_userId");
+      if(!cached) { setAppLoading(false); return; }
+      try {
+        const cloudData = await sbGet(cached);
+        if(cloudData && cloudData.patchNum) {
+          pendingCloudData.current = cloudData;
+          setUserId(cached);
+          applyCloudData(cloudData);  // always overwrite local state with cloud
+          setSetupDone(true);
+        } else {
+          // No valid cloud data — show login
+          localStorage.removeItem("hrt_userId");
+          setUserId(null);
+        }
+      } catch(e) {
+        console.warn("Failed to fetch latest from Supabase:", e);
+        // Network error — keep cached userId, show login so user can retry
+        setUserId(null);
+      }
+      setAppLoading(false);
+    }
+    loadLatest();
+  },[]);
 
   useEffect(()=>{
     if("serviceWorker" in navigator&&"PushManager" in window)
@@ -666,17 +702,44 @@ export default function HRTTracker() {
       setTimeout(()=>setSyncStatus(null), 2000);
     } catch(e) {
       console.error("Save failed:", e);
-      setSyncStatus("error");
+      setSyncStatus("error:" + e.message);
+      setTimeout(()=>setSyncStatus(null), 5000);
     }
     setSyncing(false);
     setShowSettings(false);
   }
 
   async function handleEnablePush() {
-    const p=await Notification.requestPermission();
-    if(p!=="granted")return;
-    const ok=await subscribeToPush(userId);
-    setPushEnabled(ok);
+    setPushError("");
+    // Check service worker support
+    if(!("serviceWorker" in navigator)) {
+      setPushError("Service worker not supported in this browser");
+      return;
+    }
+    if(!("PushManager" in window)) {
+      setPushError("Push notifications not supported — make sure app is installed to home screen");
+      return;
+    }
+    // Request permission
+    let permission;
+    try {
+      permission = await Notification.requestPermission();
+    } catch(e) {
+      setPushError("Permission request failed: "+e.message);
+      return;
+    }
+    if(permission !== "granted") {
+      setPushError("Permission denied — go to iPhone Settings → Notifications → find this app → allow notifications");
+      return;
+    }
+    // Subscribe
+    const ok = await subscribeToPush(userId);
+    if(ok) {
+      setPushEnabled(true);
+      setPushError("");
+    } else {
+      setPushError("Subscription failed — try closing and reopening the app from your home screen");
+    }
   }
 
   function logout(){localStorage.removeItem("hrt_userId");setUserId(null);setSetupDone(false);setAppLoading(false);}
@@ -733,7 +796,7 @@ export default function HRTTracker() {
             <div style={{fontFamily:"'Playfair Display',serif",fontSize:21,color:"#3D2B1F",fontWeight:700}}>HRT Tracker</div>
             <div style={{display:"flex",alignItems:"center",gap:6,marginTop:1}}>
               <div style={{width:6,height:6,borderRadius:"50%",background:syncing?"#E8C86A":syncStatus==="saved"?"#7BA57B":syncStatus==="error"?"#C4856A":"#C0C0C0"}}/>
-              <div style={{fontSize:11,color:"#A08070"}}>{syncing?"Syncing…":syncStatus==="saved"?"Saved ✓":syncStatus==="error"?"Sync failed":userId}</div>
+              <div style={{fontSize:11,color:"#A08070"}}>{syncing?"Syncing…":syncStatus==="saved"?"Saved ✓":syncStatus?.startsWith("error")?"Sync failed — check connection":userId}</div>
             </div>
           </div>
           <button onClick={()=>{setEPatch(patchNum);setEApplied(fmtDate(patchApplied));setETrackTos(!!tostranStart);setETostran(tostranStart?fmtDate(tostranStart):fmtDate(new Date()));setETrackPeriod(!!lastPeriodDate);setELastPeriod(lastPeriodDate||fmtDate(new Date()));setECycleLen(String(cycleLength));setShowSettings(!showSettings);}} style={{background:showSettings?"#C4856A":"white",border:"1px solid #E0D0C4",borderRadius:10,padding:"7px 13px",cursor:"pointer",fontSize:13,color:showSettings?"white":"#7A6558",fontWeight:500}}>⚙ Settings</button>
@@ -797,9 +860,20 @@ export default function HRTTracker() {
           {/* Push */}
           <div style={{paddingTop:14,borderTop:"1px solid #F0E8E0",marginTop:14}}>
             <label style={lbl}>🔔 Push notifications</label>
-            {!pushEnabled
-              ?<button onClick={handleEnablePush} style={btn("#C4856A")}>Enable push notifications</button>
-              :<div style={{fontSize:12,color:"#7BA57B"}}>✓ Active — 8am on treatment days</div>}
+            {!pushEnabled ? (
+              <div>
+                <div style={{fontSize:12,color:"#8A7265",marginBottom:8,lineHeight:1.5}}>
+                  Get notified every 2 hours on treatment days until you mark as done. Must be using the home screen icon, not Safari browser.
+                </div>
+                <button onClick={handleEnablePush} style={btn("#C4856A")}>Enable push notifications</button>
+                {pushError&&<div style={{fontSize:12,color:"#C4856A",marginTop:8,lineHeight:1.5}}>⚠ {pushError}</div>}
+              </div>
+            ) : (
+              <div>
+                <div style={{fontSize:12,color:"#7BA57B",marginBottom:6}}>✓ Active — notifies every 2 hours on treatment days until marked done</div>
+                <button onClick={async()=>{await unsubscribeFromPush();setPushEnabled(false);}} style={{...btn("#A09080"),background:"white",color:"#A09080",border:"1px solid #E0D5CC"}}>Disable notifications</button>
+              </div>
+            )}
           </div>
 
           <div style={{paddingTop:14,borderTop:"1px solid #F0E8E0",marginTop:14}}>
