@@ -930,7 +930,38 @@ export default function HRTTracker() {
                 <div style={{fontSize:12,color:"#8A7265",marginBottom:8,lineHeight:1.5}}>
                   Get notified every 2 hours on treatment days until you mark as done. Must be using the home screen icon, not Safari browser.
                 </div>
-                <button onClick={handleEnablePush} style={btn("#C4856A")}>Enable push notifications</button>
+                <button
+                  onClick={()=>{
+                    // Must be synchronous first call for iOS gesture requirement
+                    if(!("Notification" in window)){setPushError("❌ Notifications not supported on this browser");return;}
+                    Notification.requestPermission().then(permission=>{
+                      if(permission!=="granted"){
+                        setPushError("❌ Blocked — go to iPhone Settings → Notifications → find this app → Allow Notifications");
+                        return;
+                      }
+                      setPushStep("✓ Permission granted — registering…");
+                      if(!("serviceWorker" in navigator)){setPushError("❌ Service worker not supported");return;}
+                      if(!("PushManager" in window)){setPushError("❌ Push not supported — must use home screen icon not Safari");return;}
+                      navigator.serviceWorker.ready.then(reg=>{
+                        setPushStep("✓ Service worker ready — subscribing…");
+                        reg.pushManager.getSubscription().then(existing=>{
+                          const subscribePromise = existing
+                            ? Promise.resolve(existing)
+                            : reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey:urlB64ToUint8(VAPID_PUBLIC_KEY) });
+                          subscribePromise.then(sub=>{
+                            setPushStep("✓ Subscribed — saving…");
+                            sbSavePushSub(userId, sub.toJSON()).then(()=>{
+                              setPushEnabled(true);
+                              setPushStep("");
+                              setPushError("");
+                            }).catch(e=>setPushError("❌ Save failed: "+e.message));
+                          }).catch(e=>setPushError("❌ Subscribe failed: "+e.message));
+                        });
+                      }).catch(e=>setPushError("❌ Service worker error: "+e.message));
+                    }).catch(e=>setPushError("❌ Permission error: "+e.message));
+                  }}
+                  style={btn("#C4856A")}
+                >Enable push notifications</button>
                 {pushStep&&<div style={{fontSize:12,color:"#7BA57B",marginTop:8,lineHeight:1.5}}>{pushStep}</div>}
                 {pushError&&<div style={{fontSize:12,color:"#C4856A",marginTop:8,lineHeight:1.5}}>{pushError}</div>}
               </div>
