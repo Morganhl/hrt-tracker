@@ -692,7 +692,24 @@ export default function HRTTracker() {
   function toggleDone(id) {
     const next={...completed,[id]:!completed[id]};
     setCompleted(next);
-    scheduleSave(patchNum,patchApplied,tostranStart,lastPeriodDate,cycleLength,periodLogs,next);
+
+    // If marking a Tostran dose as done, reset the schedule from today
+    // so the next reminder is exactly 2 days from now regardless of when it was done
+    let newTostranStart = tostranStart;
+    if(id.startsWith("tostran") && next[id] === true) {
+      const today = new Date();
+      today.setHours(12,0,0,0);
+      // Only reset if the dose was overdue (start date was more than 2 days ago relative to today)
+      if(tostranStart) {
+        const daysSince = Math.floor((today - tostranStart) / 86400000);
+        if(daysSince % 2 !== 0) {
+          // Odd number of days = overdue, reset from today so next is in 2 days
+          newTostranStart = today;
+          setTostranStart(today);
+        }
+      }
+    }
+    scheduleSave(patchNum,patchApplied,newTostranStart,lastPeriodDate,cycleLength,periodLogs,next);
   }
 
   function handleLogPeriod(dateStr) {
