@@ -84,28 +84,15 @@ async function unsubscribeFromPush() {
 }
 
 // ─── Patch data ───────────────────────────────────────────────────────────────
-const PATCH_CHANGE_DAYS = [0,3,7,10,14,17,21,24]; // fallback
+// Alternating 4-3-4-3 day pattern locks to the same 2 weekdays throughout
+// e.g. cycle starts Tuesday → always Tue & Sat
+// offsets: 0, 4, 7, 11, 14, 18, 21, 25
+const PATCH_CHANGE_DAYS = [0, 4, 7, 11, 14, 18, 21, 25];
 
-// Calculate change days locked to same 2 weekdays as cycle start
-// e.g. if cycle starts Tuesday, changes are always Tue & Sat (Tue=0, Sat=4 -> 0,4,7,11,14,18,21,25... but we keep 28-day window)
-// Pattern: day 0, day+3or4, day+7, day+10or11... keeping same weekdays
 function getPatchChangeDays(cycleStartDate) {
-  const startDay = cycleStartDate.getDay(); // 0=Sun, 1=Mon... 6=Sat
-  // Second change day is 3 or 4 days later to make two consistent weekdays
-  // We pick whichever gives a clean 3-4 day split landing on a specific weekday
-  // Standard clinical guidance: change twice weekly, 3-4 days apart
-  // Lock to start weekday and start+3 weekday, then repeat weekly
-  const secondOffset = 3; // always 3 days after first = same two weekdays every week
-  return [
-    0,                    // week 1 change 1
-    secondOffset,         // week 1 change 2
-    7,                    // week 2 change 1
-    7 + secondOffset,     // week 2 change 2
-    14,                   // week 3 change 1
-    14 + secondOffset,    // week 3 change 2
-    21,                   // week 4 change 1
-    21 + secondOffset,    // week 4 change 2
-  ];
+  // Always 4-3 alternating regardless of start day
+  // This locks the two change days to the same weekdays every week
+  return PATCH_CHANGE_DAYS;
 }
 const PATCHES = [
   {num:1,patch:"Evorel 50",   type:"oestrogen only",           week:1,color:"#D4A5A5",emoji:"🌸"},
@@ -124,7 +111,7 @@ function fmtDate(d) { return d.toISOString().split("T")[0]; }
 function addDays(d,n) { const r=new Date(d); r.setDate(r.getDate()+n); return r; }
 function isSameDay(a,b) { return fmtDate(a)===fmtDate(b); }
 function calcCycleStart(patchNum,appliedDate) {
-  // We don't know the original cycle start weekday yet, use fixed offsets for back-calculation
+  // Back-calculate cycle start using 4-3-4-3 offsets
   return addDays(appliedDate,-PATCH_CHANGE_DAYS[patchNum-1]);
 }
 function getActivePatch(cycleStart) {
@@ -137,7 +124,7 @@ function generatePatchSchedule(cycleStart,n=6) {
   const changeDays = getPatchChangeDays(cycleStart);
   const dayNames = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
   const day1 = dayNames[cycleStart.getDay()];
-  const day2 = dayNames[addDays(cycleStart,3).getDay()];
+  const day2 = dayNames[addDays(cycleStart,4).getDay()]; // 4 days after for Tue→Sat pattern
   const evs=[];
   for(let c=0;c<n;c++) PATCHES.forEach((p,i)=>evs.push({
     id:`patch-${c}-${p.num}`,type:"patch",date:addDays(cycleStart,c*28+changeDays[i]),
