@@ -848,21 +848,14 @@ export default function HRTTracker() {
   function logout(){localStorage.removeItem("hrt_userId");setUserId(null);setSetupDone(false);setAppLoading(false);}
 
   async function hardReset() {
-    if(!confirm("This will delete ALL your saved data from the cloud and start fresh. Are you sure?")) return;
+    if(!confirm("This will clear all your treatment data and let you set it up again. Your login will be kept. Are you sure?")) return;
     try {
-      // Delete from Supabase
+      // Delete treatment data from Supabase (keep user logged in)
       await fetch(`${SUPABASE_URL}/rest/v1/hrt_data?user_id=eq.${encodeURIComponent(userId)}`, {
         method: "DELETE", headers: SB
       });
-      await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions?user_id=eq.${encodeURIComponent(userId)}`, {
-        method: "DELETE", headers: SB
-      });
     } catch(e) { console.error("Reset error:", e); }
-    // Clear local state
-    localStorage.removeItem("hrt_userId");
-    setUserId(null);
-    setSetupDone(false);
-    setAppLoading(false);
+    // Clear treatment state but keep userId — goes to wizard
     setPatchNum(1);
     setPatchApplied(new Date());
     setTostranStart(null);
@@ -871,6 +864,8 @@ export default function HRTTracker() {
     setPeriodLogs([]);
     setCompleted({});
     setPushEnabled(false);
+    setShowSettings(false);
+    setSetupDone(false); // sends back to setup wizard
   }
 
   function gcUrl(ev) {
@@ -1064,7 +1059,6 @@ export default function HRTTracker() {
             <button onClick={hardReset} style={{width:"100%",marginTop:8,padding:"10px",borderRadius:12,border:"1px solid #E0C0C0",background:"white",fontSize:12,color:"#C04040",cursor:"pointer"}}>
               🗑 Reset all data & start fresh
             </button>
-            <div style={{display:"none"}}><!-- spacer -->
           </div>
         </div>}
 
