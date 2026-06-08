@@ -847,6 +847,32 @@ export default function HRTTracker() {
 
   function logout(){localStorage.removeItem("hrt_userId");setUserId(null);setSetupDone(false);setAppLoading(false);}
 
+  async function hardReset() {
+    if(!confirm("This will delete ALL your saved data from the cloud and start fresh. Are you sure?")) return;
+    try {
+      // Delete from Supabase
+      await fetch(`${SUPABASE_URL}/rest/v1/hrt_data?user_id=eq.${encodeURIComponent(userId)}`, {
+        method: "DELETE", headers: SB
+      });
+      await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions?user_id=eq.${encodeURIComponent(userId)}`, {
+        method: "DELETE", headers: SB
+      });
+    } catch(e) { console.error("Reset error:", e); }
+    // Clear local state
+    localStorage.removeItem("hrt_userId");
+    setUserId(null);
+    setSetupDone(false);
+    setAppLoading(false);
+    setPatchNum(1);
+    setPatchApplied(new Date());
+    setTostranStart(null);
+    setLastPeriodDate(null);
+    setCycleLength(28);
+    setPeriodLogs([]);
+    setCompleted({});
+    setPushEnabled(false);
+  }
+
   function gcUrl(ev) {
     const d=ev.date,dt=`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
     const n=addDays(d,1),dt2=`${n.getFullYear()}${String(n.getMonth()+1).padStart(2,"0")}${String(n.getDate()).padStart(2,"0")}`;
@@ -1034,6 +1060,11 @@ export default function HRTTracker() {
           <div style={{display:"flex",gap:8,marginTop:14}}>
             <button onClick={logout} style={{flex:1,padding:"10px",borderRadius:12,border:"1px solid #E0D0C8",background:"white",fontSize:12,color:"#B07060",cursor:"pointer"}}>Log out</button>
             <button onClick={saveSettings} style={{flex:2,padding:"10px",borderRadius:12,border:"none",background:"#C4856A",color:"white",fontSize:13,fontWeight:600,cursor:"pointer"}}>Save & sync</button>
+            </div>
+            <button onClick={hardReset} style={{width:"100%",marginTop:8,padding:"10px",borderRadius:12,border:"1px solid #E0C0C0",background:"white",fontSize:12,color:"#C04040",cursor:"pointer"}}>
+              🗑 Reset all data & start fresh
+            </button>
+            <div style={{display:"none"}}><!-- spacer -->
           </div>
         </div>}
 
