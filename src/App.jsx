@@ -1056,11 +1056,10 @@ export default function HRTTracker() {
             <button onClick={logout} style={{flex:1,padding:"10px",borderRadius:12,border:"1px solid #E0D0C8",background:"white",fontSize:12,color:"#B07060",cursor:"pointer"}}>Log out</button>
             <button onClick={saveSettings} style={{flex:2,padding:"10px",borderRadius:12,border:"none",background:"#C4856A",color:"white",fontSize:13,fontWeight:600,cursor:"pointer"}}>Save & sync</button>
             </div>
-            <button onClick={hardReset} style={{width:"100%",marginTop:8,padding:"10px",borderRadius:12,border:"1px solid #E0C0C0",background:"white",fontSize:12,color:"#C04040",cursor:"pointer"}}>
-              🗑 Reset all data & start fresh
+            <button onClick={hardReset} style={{width:"100%",marginTop:10,padding:"12px",borderRadius:12,border:"1px solid #F0C8C8",background:"#FFF5F5",fontSize:13,color:"#C04040",cursor:"pointer",fontWeight:500}}>
+              🗑 Reset data & start fresh
             </button>
-          </div>
-        </div>}
+          </div>}
 
         {/* Hero */}
         <div style={{background:`linear-gradient(135deg,${activePatch.color}30,${activePatch.color}10)`,border:`1.5px solid ${activePatch.color}66`,borderRadius:20,padding:"18px 20px",marginTop:16,boxShadow:`0 8px 28px ${activePatch.color}20`}}>
