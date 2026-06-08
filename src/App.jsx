@@ -761,6 +761,9 @@ export default function HRTTracker() {
     setSyncing(true);
     try {
       await sbUpsert(uid, payload(pn, pa, ts, lp, cl, pl, cd));
+      // Re-fetch from Supabase to guarantee UI is in sync with saved data
+      const fresh = await sbGet(uid);
+      if(fresh) applyCloudData(fresh);
       setSyncStatus("saved");
       setTimeout(()=>setSyncStatus(null), 2000);
     } catch(e) {
