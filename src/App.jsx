@@ -107,7 +107,7 @@ const PATCHES = [
 const DAY_NAMES   = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
-function fmtDate(d) { return d.toISOString().split("T")[0]; }
+function fmtDate(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
 function addDays(d,n) { const r=new Date(d); r.setDate(r.getDate()+n); return r; }
 function isSameDay(a,b) { return fmtDate(a)===fmtDate(b); }
 function calcCycleStart(patchNum,appliedDate) {
