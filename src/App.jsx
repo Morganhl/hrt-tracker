@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from "react";
 // ─── Config ───────────────────────────────────────────────────────────────────
 const SUPABASE_URL      = "https://qwafwokfrakhlqqbuesv.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF3YWZ3b2tmcmFraGxxcWJ1ZXN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzMzY0MjMsImV4cCI6MjA5NDkxMjQyM30.iSp5d-EQC0bRE8JazvdnMEGfHz6v7FxgHsL8foYtzOg";
-const VAPID_PUBLIC_KEY  = "BNbly2PMHy9CMehr0BFOQ77AtrQeVZDcmjUi8JQMhuj-f8K4SZ1BuPVRB_BTzvmgcoCHJU6usRbyjSLV7yGed3E";
+const VAPID_PUBLIC_KEY  = "BCwAfD08ceme4E6RdlRpQ1k_VMLKfkiwqc_cVEdPrCzJrWzbza44LsQe11ntvEL7cnfzLCyVLTESXcolRnKyofI";
 
 const SB = { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" };
 async function sbGet(uid) {
@@ -84,7 +84,29 @@ async function unsubscribeFromPush() {
 }
 
 // ─── Patch data ───────────────────────────────────────────────────────────────
-const PATCH_CHANGE_DAYS = [0,3,7,10,14,17,21,24];
+const PATCH_CHANGE_DAYS = [0,3,7,10,14,17,21,24]; // fallback
+
+// Calculate change days locked to same 2 weekdays as cycle start
+// e.g. if cycle starts Tuesday, changes are always Tue & Sat (Tue=0, Sat=4 -> 0,4,7,11,14,18,21,25... but we keep 28-day window)
+// Pattern: day 0, day+3or4, day+7, day+10or11... keeping same weekdays
+function getPatchChangeDays(cycleStartDate) {
+  const startDay = cycleStartDate.getDay(); // 0=Sun, 1=Mon... 6=Sat
+  // Second change day is 3 or 4 days later to make two consistent weekdays
+  // We pick whichever gives a clean 3-4 day split landing on a specific weekday
+  // Standard clinical guidance: change twice weekly, 3-4 days apart
+  // Lock to start weekday and start+3 weekday, then repeat weekly
+  const secondOffset = 3; // always 3 days after first = same two weekdays every week
+  return [
+    0,                    // week 1 change 1
+    secondOffset,         // week 1 change 2
+    7,                    // week 2 change 1
+    7 + secondOffset,     // week 2 change 2
+    14,                   // week 3 change 1
+    14 + secondOffset,    // week 3 change 2
+    21,                   // week 4 change 1
+    21 + secondOffset,    // week 4 change 2
+  ];
+}
 const PATCHES = [
   {num:1,patch:"Evorel 50",   type:"oestrogen only",           week:1,color:"#D4A5A5",emoji:"🌸"},
   {num:2,patch:"Evorel 50",   type:"oestrogen only",           week:1,color:"#D4A5A5",emoji:"🌸"},
@@ -101,17 +123,26 @@ const MONTH_NAMES = ["January","February","March","April","May","June","July","A
 function fmtDate(d) { return d.toISOString().split("T")[0]; }
 function addDays(d,n) { const r=new Date(d); r.setDate(r.getDate()+n); return r; }
 function isSameDay(a,b) { return fmtDate(a)===fmtDate(b); }
-function calcCycleStart(patchNum,appliedDate) { return addDays(appliedDate,-PATCH_CHANGE_DAYS[patchNum-1]); }
+function calcCycleStart(patchNum,appliedDate) {
+  // We don't know the original cycle start weekday yet, use fixed offsets for back-calculation
+  return addDays(appliedDate,-PATCH_CHANGE_DAYS[patchNum-1]);
+}
 function getActivePatch(cycleStart) {
+  const changeDays = getPatchChangeDays(cycleStart);
   const cd = ((Math.floor((new Date()-cycleStart)/86400000)%28)+28)%28;
-  let slot=0; for(let i=PATCH_CHANGE_DAYS.length-1;i>=0;i--){if(cd>=PATCH_CHANGE_DAYS[i]){slot=i;break;}}
+  let slot=0; for(let i=changeDays.length-1;i>=0;i--){if(cd>=changeDays[i]){slot=i;break;}}
   return {patch:PATCHES[slot],cycleDay:cd,slot};
 }
 function generatePatchSchedule(cycleStart,n=6) {
+  const changeDays = getPatchChangeDays(cycleStart);
+  const dayNames = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  const day1 = dayNames[cycleStart.getDay()];
+  const day2 = dayNames[addDays(cycleStart,3).getDay()];
   const evs=[];
   for(let c=0;c<n;c++) PATCHES.forEach((p,i)=>evs.push({
-    id:`patch-${c}-${p.num}`,type:"patch",date:addDays(cycleStart,c*28+PATCH_CHANGE_DAYS[i]),
-    patch:p.patch,patchType:p.type,color:p.color,emoji:p.emoji,week:p.week,patchNum:p.num,label:`Change to ${p.patch}`
+    id:`patch-${c}-${p.num}`,type:"patch",date:addDays(cycleStart,c*28+changeDays[i]),
+    patch:p.patch,patchType:p.type,color:p.color,emoji:p.emoji,week:p.week,patchNum:p.num,
+    label:`Change to ${p.patch}`,changeDay:i%2===0?day1:day2
   }));
   return evs;
 }
