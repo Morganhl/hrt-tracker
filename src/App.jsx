@@ -11,48 +11,22 @@ async function sbGet(uid) {
   const rows = await r.json(); return rows?.[0]?.data || null;
 }
 async function sbUpsert(uid, data) {
-  // First try UPDATE - if row exists, update it
-  const updateRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/hrt_data?user_id=eq.${encodeURIComponent(uid)}`,
-    {
-      method: "PATCH",
-      headers: { ...SB, "Content-Type": "application/json" },
-      body: JSON.stringify({ data, updated_at: new Date().toISOString() })
-    }
-  );
-
-  if (!updateRes.ok) {
-    const err = await updateRes.text();
-    console.warn("PATCH failed, trying INSERT:", err);
-    // If update failed, try insert (new user)
-    const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/hrt_data`, {
-      method: "POST",
-      headers: { ...SB, "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: uid, data, updated_at: new Date().toISOString() })
-    });
-    if (!insertRes.ok) {
-      const insertErr = await insertRes.text();
-      console.error("INSERT also failed:", insertErr);
-      throw new Error(`Save failed: ${insertRes.status} ${insertErr}`);
-    }
-    return insertRes;
+  // Use POST with upsert - handles both insert and update
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/hrt_data`, {
+    method: "POST",
+    headers: {
+      ...SB,
+      "Content-Type": "application/json",
+      "Prefer": "resolution=merge-duplicates,return=minimal"
+    },
+    body: JSON.stringify({ user_id: uid, data, updated_at: new Date().toISOString() })
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    console.error("Upsert failed:", res.status, err);
+    throw new Error(`Save failed: ${res.status} ${err}`);
   }
-
-  // Check if PATCH actually updated anything (returns empty if no row found)
-  const text = await updateRes.text();
-  if (text === "[]" || text === "") {
-    // No existing row — insert instead
-    const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/hrt_data`, {
-      method: "POST",
-      headers: { ...SB, "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: uid, data, updated_at: new Date().toISOString() })
-    });
-    if (!insertRes.ok) {
-      const insertErr = await insertRes.text();
-      throw new Error(`Insert failed: ${insertRes.status} ${insertErr}`);
-    }
-  }
-  return updateRes;
+  return res;
 }
 async function sbSavePushSub(uid, sub) {
   await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions`, {
