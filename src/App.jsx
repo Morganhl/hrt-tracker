@@ -1058,7 +1058,7 @@ export default function HRTTracker() {
             </div>
             <div style={{marginTop:10,paddingTop:12,borderTop:"1px solid #F0E8E0"}}>
               <button onClick={hardReset} style={{width:"100%",padding:"12px",borderRadius:12,border:"1px solid #F0C8C8",background:"#FFF5F5",fontSize:13,color:"#C04040",cursor:"pointer",fontWeight:500}}>
-                🗑 Reset data &amp; start fresh
+                🗑 Reset data & start fresh
               </button>
               <div style={{fontSize:11,color:"#C08080",textAlign:"center",marginTop:6}}>Clears all treatment data — keeps you logged in</div>
             </div>
