@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from "react";
 // ─── Config ───────────────────────────────────────────────────────────────────
 const SUPABASE_URL      = "https://qwafwokfrakhlqqbuesv.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF3YWZ3b2tmcmFraGxxcWJ1ZXN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzMzY0MjMsImV4cCI6MjA5NDkxMjQyM30.iSp5d-EQC0bRE8JazvdnMEGfHz6v7FxgHsL8foYtzOg";
-const VAPID_PUBLIC_KEY  = "BK1ZG9qcUT_z0QY83btuTi1ItZmisxno8ZBprYHt2p8Xhtxfv890WF2o8mEPErYN7y9H0TE5W3C2Id0dQgB_1yA";
+const VAPID_PUBLIC_KEY  = "BKg-lnTQvce5Xgwa-vHFcR8zfCYgDKvZnVwbNc1P6alNKmF4j2RzoYhOASjuSwUUMyo44o6mSFlysQ14YEE2bCQ";
 
 const SB = { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" };
 async function sbGet(uid) {
@@ -17,7 +17,7 @@ async function sbUpsert(uid, data) {
     headers: {
       ...SB,
       "Content-Type": "application/json",
-      "Prefer": "resolution=merge-duplicates,return=minimal"
+      "Prefer": "resolution=merge-duplicates"
     },
     body: JSON.stringify({ user_id: uid, data, updated_at: new Date().toISOString() })
   });
